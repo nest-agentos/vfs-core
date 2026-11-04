@@ -27,6 +27,7 @@ import { DirectoryDriver } from './DirectoryDriver';
 export type { DirectoryFSDeps } from './DirectoryContext';
 
 export class DirectoryFS implements IFileSystem {
+    private readonly subscriptions = new Set<() => void>();
     readonly revision = 0;
     async capabilitiesAt(_path: string) { return this.capabilities; }
     readonly viewId: string;
@@ -73,16 +74,22 @@ export class DirectoryFS implements IFileSystem {
         this.ctx.initialized = true;
     }
 
-    async dispose(): Promise<void> { this.ctx.initialized = false; }
+    async dispose(): Promise<void> {this.ctx.initialized = false; for (const stop of [...this.subscriptions]) stop();}
 
     on<E extends FSEventType>(event: E, callback: (event: FSEvent<E>) => void): () => void {
-        return this.onAny(e => { if (e.type === event) callback(e as FSEvent<E>); });
+        const off = this._driver.on(event, callback);
+        const offContent = onContentEvent(this, e => {if (e.type === event) callback(e as FSEvent<E>);});
+        return this.trackSubscription(off, offContent);
     }
 
     onAny(callback: (event: FSEvent) => void): () => void {
         const off = this._driver.onAny(callback);
         const offContent = onContentEvent(this, callback);
-        return () => { off(); offContent(); };
+        return this.trackSubscription(off, offContent);
     }
 
+    private trackSubscription(...stops: Array<() => void>): () => void {
+        const stop = () => {for (const unsubscribe of stops) unsubscribe(); this.subscriptions.delete(stop);};
+        this.subscriptions.add(stop); return stop;
+    }
 }

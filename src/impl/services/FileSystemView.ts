@@ -56,6 +56,8 @@ export class FileSystemView implements IFileSystem {
     private active = 0;
     private drain?: () => void;
     private disposing?: Promise<void>;
+    private readonly eventListeners = new Set<{type?: FSEventType; callback: (event: FSEvent) => void}>();
+    private sourceEventStops: Array<() => void> = [];
     private readonly subscriptions = new Set<() => void>();
 
     constructor(options: FileSystemViewOptions) {
@@ -637,28 +639,50 @@ export class FileSystemView implements IFileSystem {
     }
 
     on<E extends FSEventType>(type: E, callback: (event: FSEvent<E>) => void): () => void {
-        return this.onAny(event => { if (event.type === type) callback(event as FSEvent<E>); });
+        return this.subscribe(event => callback(event as FSEvent<E>), type);
     }
-    onAny(callback: (event: FSEvent) => void): () => void {
+    onAny(callback: (event: FSEvent) => void): () => void {return this.subscribe(callback);}
+    private subscribe(callback: (event: FSEvent) => void, type?: FSEventType): () => void {
         this.assertOpen();
-        const off = this.mounts.map(m => m.fs.onAny?.(event => {
-            if (this.closed) return;
-            if (!event.type.startsWith('node:') && !event.type.startsWith('operation:') && !event.type.startsWith('content:') && event.type !== 'seq:committed') return;
-            try {
-                const payload = this.eventPayload(m, event.payload);
-                callback({ type: event.type, timestamp: event.timestamp, fromTransaction: event.fromTransaction,
-                    payload, mountId: m.mountId, viewId: this.viewId, revision: this.revision });
-            } catch (error) { if (!(error instanceof FSError)) throw error; }
-        })).filter((fn): fn is () => void => Boolean(fn));
-        off.push(onContentEvent(this, callback));
-        const unsubscribe = () => { for (const fn of off) fn(); this.subscriptions.delete(unsubscribe); };
-        this.subscriptions.add(unsubscribe);
-        return unsubscribe;
+        const listener = {type, callback}; this.eventListeners.add(listener);
+        try {if (this.eventListeners.size === 1) this.startSourceEvents();}
+        catch (error) {this.eventListeners.delete(listener); for (const stop of this.sourceEventStops.splice(0)) stop(); throw error;}
+        const stopContent = onContentEvent(this, event => {if (!type || event.type === type) callback(event);});
+        const unsubscribe = () => {
+            stopContent(); this.eventListeners.delete(listener); this.subscriptions.delete(unsubscribe);
+            if (!this.eventListeners.size) for (const stop of this.sourceEventStops.splice(0)) stop();
+        };
+        this.subscriptions.add(unsubscribe); return unsubscribe;
     }
-    private eventPayload(m: Binding, value: any, key = ''): any {
-        if (typeof value === 'string' && /paths?$/i.test(key)) return this.virtualPath(m, value);
-        if (Array.isArray(value)) return value.map(v => this.eventPayload(m, v, key));
-        if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, this.eventPayload(m, v, k)]));
+    private startSourceEvents(): void {
+        for (const mount of this.mounts) {
+            const stop = mount.fs.onAny?.(event => this.dispatchSourceEvent(mount, event));
+            if (stop) this.sourceEventStops.push(stop);
+        }
+    }
+    /** One upstream subscription per mount avoids repeated projection through nested views. */
+    private dispatchSourceEvent(m: Binding, event: FSEvent): void {
+        if (this.closed || (!event.type.startsWith('node:') && !event.type.startsWith('operation:') && !event.type.startsWith('content:') && event.type !== 'seq:committed')) return;
+        const paths = new Map<string, string>(), errors: unknown[] = [];
+        for (const {type, callback} of [...this.eventListeners]) {
+            if (this.closed) break;
+            if (type && event.type !== type) continue;
+            try {
+                const payload = this.eventPayload(m, event.payload, '', paths);
+                callback({type: event.type, timestamp: event.timestamp, fromTransaction: event.fromTransaction,
+                    payload, mountId: m.mountId, viewId: this.viewId, revision: this.revision});
+            } catch (error) {if (!(error instanceof FSError)) errors.push(error);}
+        }
+        if (errors.length) throw new AggregateError(errors, 'File system event listeners failed');
+    }
+    private eventPayload(m: Binding, value: any, key = '', paths = new Map<string, string>()): any {
+        if (typeof value === 'string' && /paths?$/i.test(key)) {
+            let mapped = paths.get(value);
+            if (mapped === undefined) {mapped = this.virtualPath(m, value); paths.set(value, mapped);}
+            return mapped;
+        }
+        if (Array.isArray(value)) return value.map(v => this.eventPayload(m, v, key, paths));
+        if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, this.eventPayload(m, v, k, paths)]));
         return value;
     }
 

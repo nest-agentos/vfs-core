@@ -243,3 +243,21 @@ describe('view error causes', () => {
         expect(failure.cause?.message).toContain('Read-only mount');
     });
 });
+
+describe('event projection cost', () => {
+    it('maps an event path once across typed subscribers while preserving independent payloads', async () => {
+        const fs = await source(); await fs.driver.createFile({name: 'state.seq', type: 'seqfile'});
+        const app = view({viewId: 'event-cost', mounts: [{mountId: 'source', at: '/mounted', fs, access: 'rw'}]});
+        const mapping = vi.spyOn(app as unknown as {virtualPath: (...args: unknown[]) => string}, 'virtualPath');
+        const seen: string[] = [], unrelated = vi.fn();
+        for (let i = 0; i < 100; i++) app.on('seq:committed', event => {
+            seen.push(event.payload.paths[0]); event.payload.paths[0] = '/changed-by-listener';
+        });
+        app.on('node:created', unrelated);
+        await fs.meta.seq!.setEntry('/state.seq', 'status', 'ready');
+        expect(seen).toEqual(Array(100).fill('/mounted/state.seq'));
+        expect(mapping).toHaveBeenCalledTimes(1); expect(unrelated).not.toHaveBeenCalled();
+        await fs.meta.seq!.setEntry('/state.seq', 'status', 'done');
+        expect(mapping).toHaveBeenCalledTimes(2);
+    });
+});

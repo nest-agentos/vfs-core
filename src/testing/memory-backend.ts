@@ -292,8 +292,8 @@ class MemoryRecordStore implements IRecordStore, IRecordTransaction {
     ): Promise<{ total: number; processed: number }> {
         const prefix = options?.prefix ?? '';
         const rows = [...(this.fields.get(path)?.entries() ?? [])]
-            .filter(([field]) => field.startsWith(prefix))
-            .sort(([left], [right]) => left.localeCompare(right));
+            .filter(([field]) => field.startsWith(prefix) && (options?.after === undefined || field > options.after))
+            .sort(([left], [right]) => options?.order === 'key' ? (left < right ? -1 : left > right ? 1 : 0) : left.localeCompare(right));
         let processed = 0;
         const offset = options?.offset ?? 0;
         const limit = options?.limit ?? Number.POSITIVE_INFINITY;
@@ -318,6 +318,11 @@ class MemoryRecordStore implements IRecordStore, IRecordTransaction {
         return processed;
     }
 
+    readTransaction<T>(operation: (tx: IRecordTransaction) => Promise<T>): Promise<T> {
+        const result = this.tail.then(() => operation(this), () => operation(this));
+        this.tail = result.then(() => undefined, () => undefined);
+        return result;
+    }
     transaction<T>(operation: (tx: IRecordTransaction) => Promise<T>): Promise<T> {
         const run = async (): Promise<T> => {
             const original = this.fields;

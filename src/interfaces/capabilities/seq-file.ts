@@ -45,7 +45,7 @@ export interface ISeqFileTransaction {
     walkEntries(
         fileIdOrPath: string,
         callback: (entry: SeqFileEntry) => boolean | Promise<boolean>,
-        options?: { keyPrefix?: string; limit?: number; offset?: number },
+        options?: { keyPrefix?: string; limit?: number; offset?: number; order?: 'key'; after?: string },
     ): Promise<{ total: number; processed: number }>;
 }
 
@@ -71,6 +71,8 @@ export interface ISeqFileOperations {
         callback: (entry: SeqFileEntry) => boolean | Promise<boolean>,
         options?: {
             keyPrefix?: string;
+            order?: 'key';
+            after?: string;
             limit?: number;
             offset?: number;
         },

@@ -3,7 +3,7 @@ import { checkOperation, FSError, FSCapabilityError, type IStorageBackend, type 
 import * as P from '../../utils/path';
 import { normalizeVirtualPath } from './FileSystemView';
 
-/** Compatibility boundary: new file-only drivers need no tag/record implementations. */
+/** File-only drivers need no tag/record implementations. */
 export class FileStorageAdapter implements IStorageBackend {
     constructor(readonly fileStorage: FileStorageBackend) {}
     get name() { return this.fileStorage.name; }
@@ -18,12 +18,17 @@ export class FileStorageAdapter implements IStorageBackend {
         const stat = await (reader.statType?.(this.path(path), options) ?? reader.stat(this.path(path), options));
         return stat ? { type: stat.kind } : null;
     }
-    async list(path: string, options?: OperationOptions): Promise<FSNode[]> {
+    list(path: string, options?: OperationOptions): Promise<FSNode[]> { return this.listProjected(path, options, 'stat'); }
+    async listEntries(path: string, options?: OperationOptions): Promise<import('../../protocol').DirEntry[]> {
+        return (await this.listProjected(path, options, 'entry')).map(node => ({path: node.path, name: node.name,
+            type: node.type, modifiedAt: node.modifiedAt, ...('size' in node ? {size: node.size} : {})}));
+    }
+    private async listProjected(path: string, options: OperationOptions | undefined, fields: 'entry' | 'stat'): Promise<FSNode[]> {
         const nodes: FSNode[] = [], seen = new Set<string>();
         let cursor: string | undefined;
         do {
             checkOperation(options);
-            const page = await this.fileStorage.files.list(this.path(path), { ...options, cursor });
+            const page = await this.fileStorage.files.list(this.path(path), { ...options, cursor, fields });
             if (page.warnings?.length) throw new FSError('ECAPABILITY', 'Directory contains unsupported entries');
             for (const entry of page.entries) {
                 if (!entry.name || /[/\\\0]/.test(entry.name) || ['.', '..'].includes(entry.name)) throw new FSError('EIO', 'Invalid source entry');

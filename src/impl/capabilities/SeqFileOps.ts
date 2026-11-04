@@ -161,12 +161,14 @@ class SeqTransaction implements ISeqFileTransaction {
     async walkEntries(
         path: string,
         callback: (entry: SeqFileEntry) => boolean | Promise<boolean>,
-        options?: { keyPrefix?: string; limit?: number; offset?: number },
+        options?: { keyPrefix?: string; limit?: number; offset?: number; order?: 'key'; after?: string },
     ): Promise<{ total: number; processed: number }> {
         return this.records.walkRecordFields(
             this.path(path),
             (key, value) => callback({ key: seqKey(key), value: stringifyRecordValue(value) }),
-            { prefix: seqField(options?.keyPrefix ?? ''), limit: options?.limit, offset: options?.offset },
+            { prefix: seqField(options?.keyPrefix ?? ''),
+                order: options?.order,
+                after: options?.after === undefined ? undefined : seqField(options.after), limit: options?.limit, offset: options?.offset },
         );
     }
 }
@@ -190,7 +192,8 @@ export class SeqFileOps implements ISeqFileOperations {
         if (!keys.length) return {};
         const realPath = await this.path(path);
         const read = (records: IRecordTransaction) => readEntries(records, realPath, keys);
-        return this.records.transaction ? this.records.transaction(read) : read(this.records);
+        if (!this.records.readTransaction) throw new FSError('ECAPABILITY', 'Record backend requires readTransaction for batch snapshots');
+        return this.records.readTransaction(read);
     }
 
     /** 逐路径解析；节点不存在（ENOENT）时记为 null 而非抛错。 */
@@ -216,7 +219,8 @@ export class SeqFileOps implements ISeqFileOperations {
         const paths = await this.resolveMany(requests);
         const keys = requests.map(request => request.key);
         const read = (records: IRecordTransaction) => readEntriesMany(records, paths, keys);
-        return this.records.transaction ? this.records.transaction(read) : read(this.records);
+        if (!this.records.readTransaction) throw new FSError('ECAPABILITY', 'Record backend requires readTransaction for batch snapshots');
+        return this.records.readTransaction(read);
     }
 
     async setEntry(path: string, key: string, value: string): Promise<void> {
@@ -247,7 +251,7 @@ export class SeqFileOps implements ISeqFileOperations {
     async walkEntries(
         path: string,
         callback: (entry: SeqFileEntry) => boolean | Promise<boolean>,
-        options?: { keyPrefix?: string; limit?: number; offset?: number },
+        options?: { keyPrefix?: string; limit?: number; offset?: number; order?: 'key'; after?: string },
     ): Promise<{ total: number; processed: number }> {
         return this.records.walkRecordFields(
             await this.path(path),
@@ -257,6 +261,8 @@ export class SeqFileOps implements ISeqFileOperations {
             }),
             {
                 prefix: seqField(options?.keyPrefix ?? ''),
+                order: options?.order,
+                after: options?.after === undefined ? undefined : seqField(options.after),
                 limit: options?.limit,
                 offset: options?.offset,
             },

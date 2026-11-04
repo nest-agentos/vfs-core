@@ -123,3 +123,7 @@ file-only 来源的 FSCapabilities.metadata 从 mutations.updateMetadata 派生�
 `content:started/finished` 是句柄生命周期通知，通过 `fs.on/onAny` 订阅：创建 FileHandle 时 started；显式 `await file.close?.()` 等待该句柄在途主内容及附件读写后 finished。close 幂等，禁止关闭后继续内容 IO；失败 IO 使 finished.outcome=failure。openFile 不读取/打开底层 OS 文件，close 不代表全局所有句柄均关闭，也不增加存储 fsync 承诺。调用方未 close 不会自动发送 finished；driver.writeContent 的 node:updated 仍仅表示单次写成功。
 
 tags 更新的 `node:updated.reason` 统一为 metadata，changedFields 保留 tags 以定位 meta 子类。`seq:committed` 保留 paths，新增 changes（path/key/type=set|delete），只在成功提交后发布，不附记录正文。变化按执行顺序保留；append/increment/CAS 成功归入 set/delete，CAS 未命中及事务回滚不产生变化。key 是存储记录标识；业务类型由消费方按其协议解释，核心不解析记录正文。
+
+批量 SeqFile 读取 `getEntries/getEntriesMany` 使用同一 `IRecordStore.readTransaction` 只读快照契约，路径映射必须转发。缺失端口报 `ECAPABILITY`，不得转入写事务；所有内置后端已实现。写入、CAS 和显式 `transaction` 仍保持原子事务。`walkEntries({order: "key", offset, limit})` 明确请求底层有序键分页，不应先加载全部记录正文再截取。
+
+FileSystemView event listeners share one upstream subscription per mount. Filter typed listeners before payload projection and reuse path strings only within the current event; callback payloads remain independently owned. Last-listener removal and view/DirectoryFS disposal release upstream subscriptions.

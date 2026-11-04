@@ -42,3 +42,14 @@ it('copies metadata to a capable source and rejects an unsupported target before
     await expect(unsupported.fs.driver.createFile({parentPath: '/', name: 'direct.md', metadata: {title: 'No'}})).rejects.toMatchObject({code: 'ECAPABILITY'});
     expect(await unsupported.fs.driver.exists('/direct.md')).toBe(false);
 });
+
+it('preserves the entry projection through the file source adapter', async () => {
+    const list = vi.fn(async (_path: string, options?: import('../src').FileListOptions) => ({entries: [{name: 'a.md',
+        stat: {kind: 'file' as const, size: 1, modifiedAt: 2, ...(options?.fields === 'stat' ? {metadata: {title: 'A'}} : {})}}], nextCursor: null}));
+    const adapter = new FileStorageAdapter({name: 'projection', init: async () => {}, close: async () => {},
+        files: {list, stat: async () => null, read: async () => ({data: new Uint8Array()})}});
+    expect((await adapter.listEntries('/'))[0]).not.toHaveProperty('metadata');
+    expect(list).toHaveBeenLastCalledWith('', expect.objectContaining({fields: 'entry'}));
+    expect((await adapter.list('/'))[0].metadata).toEqual({title: 'A'});
+    expect(list).toHaveBeenLastCalledWith('', expect.objectContaining({fields: 'stat'}));
+});

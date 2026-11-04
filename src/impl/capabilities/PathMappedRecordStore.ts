@@ -24,6 +24,8 @@ export function mapRecordPaths(records: IRecordStore, path: (systemPath: string)
         deleteRecordIndex: (p, field) => records.deleteRecordIndex(path(p), field),
         queryRecordFields: (p, query, options) => records.queryRecordFields(path(p), query, options),
         walkRecordFieldNames: (p, callback, options) => records.walkRecordFieldNames(path(p), callback, options),
+        ...(records.readTransaction ? { readTransaction: <T>(operation: (tx: IRecordTransaction) => Promise<T>) =>
+            records.readTransaction!(tx => operation(scoped(tx))) } : {}),
         ...(records.transaction ? { transaction: <T>(operation: (tx: IRecordTransaction) => Promise<T>) =>
             records.transaction!(tx => operation(scoped(tx))) } : {}),
     };

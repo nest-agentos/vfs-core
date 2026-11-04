@@ -34,6 +34,10 @@ export interface RecordQueryResult {
 
 /** walkRecordFields 选项 */
 export interface RecordWalkOptions {
+    /** Use the backend's ordered key index for bounded pages. */
+    order?: 'key';
+    /** Exclusive lower bound in backend field order. */
+    after?: string;
     /** 字段名前缀过滤 */
     prefix?: string;
     limit?: number;
@@ -109,4 +113,6 @@ export interface IRecordStore {
 
     /** Execute record operations as one serializable transaction. */
     transaction?<T>(operation: (tx: IRecordTransaction) => Promise<T>): Promise<T>;
+    /** Read a consistent snapshot without reserving the backend writer, when supported. */
+    readTransaction?<T>(operation: (tx: IRecordTransaction) => Promise<T>): Promise<T>;
 }

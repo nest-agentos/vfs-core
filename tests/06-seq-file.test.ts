@@ -218,3 +218,21 @@ describe('SeqFile operations (IndexedDB backend)', () => {
         expect(text).toContain('name=alice');
     });
 });
+
+it('routes batch reads to a read snapshot while keeping compare-and-set transactional', async () => {
+    const backend = freshMem();
+    const snapshot = vi.fn(async (read: (records: typeof backend.records) => Promise<unknown>) => read(backend.records));
+    Object.assign(backend.records, {readTransaction: snapshot});
+    const vfs = await setupVFS(backend);
+    try {
+        await vfs.fs.driver.createFile({name: 'read.seq', type: 'seqfile'});
+        await vfs.fs.meta.seq!.setEntries('/read.seq', {x: '1'});
+        const write = vi.spyOn(backend.records, 'transaction');
+        expect(await vfs.fs.meta.seq!.getEntries('/read.seq', ['x'])).toEqual({x: '1'});
+        expect(await vfs.fs.meta.seq!.getEntriesMany([{fileIdOrPath: '/read.seq', key: 'x'}])).toEqual(['1']);
+        expect(snapshot).toHaveBeenCalledTimes(2);
+        expect(write).not.toHaveBeenCalled();
+        await vfs.fs.meta.seq!.transaction!(tx => tx.compareAndSet('/read.seq', 'x', {expected: '1', value: '2'}));
+        expect(write).toHaveBeenCalledOnce();
+    } finally {await vfs.dispose();}
+});
