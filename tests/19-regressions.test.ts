@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { setupVFS, readText, type TestVFS } from './helpers';
-import { type IDeviceDriver } from '@itookit/vfs-core';
+import { type IDeviceDriver } from '@nestos/vfs-core';
 
 describe('Regression fixes', () => {
     let vfs: TestVFS;

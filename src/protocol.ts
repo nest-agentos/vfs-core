@@ -3,8 +3,8 @@
  * @desc VFS 协议层统一导出(接口/类型/常量/错误)
  *
  * 使用方式：
- *   import type { IFileSystem, FSNode, FSFileNode } from '@itookit/vfs-core';
- *   import { FSError, FSNotFoundError } from '@itookit/vfs-core';
+ *   import type { IFileSystem, FSNode, FSFileNode } from '@nestos/vfs-core';
+ *   import { FSError, FSNotFoundError } from '@nestos/vfs-core';
  */
 
 // ── 常量 ──

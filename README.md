@@ -1,4 +1,4 @@
-# @itookit/vfs-core
+# @nestos/vfs-core
 
 Independent virtual filesystem contracts, engine, views, records and events. Runtime dependencies: `yaml` and `ignore`. No application, UI, session, driver or sync dependencies.
 
@@ -11,14 +11,14 @@ pnpm pack
 ```
 
 ```ts
-import { createVFS, MemoryBackend } from '@itookit/vfs-core';
+import { createVFS, MemoryBackend } from '@nestos/vfs-core';
 const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
 const fs = await manager.openFileSystem('/');
 await fs.driver.createFile({ parentPath: '/', name: 'hello.txt', content: 'Hello' });
 await manager.dispose();
 ```
 
-The workspace uses source exports; `pnpm pack` replaces them with the ESM/CJS and declaration exports in `publishConfig`. Testing helpers have a separate `@itookit/vfs-core/testing` entry. Drivers implement storage contracts; host applications inject project policy. Optional sync integration must live outside this repository.
+The workspace uses source exports; `pnpm pack` replaces them with the ESM/CJS and declaration exports in `publishConfig`. Testing helpers have a separate `@nestos/vfs-core/testing` entry. Drivers implement storage contracts; host applications inject project policy. Optional sync integration must live outside this repository.
 
 See [development instructions](AGENTS.md), [key classes](doc/key-classes.md) and [entry point](src/index.ts).
 

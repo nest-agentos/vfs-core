@@ -1,5 +1,5 @@
 {
-  "name": "@itookit/vfs-core",
+  "name": "@nestos/vfs-core",
   "version": "5.3.4",
   "description": "Virtual filesystem core for the itookit ecosystem. Merged protocol + engine: VFS interfaces, types, engine, module FS, storage backends, and event bus.",
   "type": "module",
@@ -68,7 +68,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/nest-agentos/vfs-core.git"
+    "url": "git+https://github.com/nest-agentos/vfs-core.git"
   },
   "bugs": {
     "url": "https://github.com/nest-agentos/vfs-core/issues"
