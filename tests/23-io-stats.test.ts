@@ -10,7 +10,7 @@ describe('VFS IO statistics', () => {
         const base = await manager.openFileSystem('/');
         const typeProbe = vi.spyOn(base.driver, 'getNodeType');
         const view = createFileSystemView({ viewId: 'batch-prefixes', mounts: [
-            { mountId: 'root', at: '/', root: '/', fs: base, access: 'ro' },
+            { mountId: 'root', at: '/', root: '/', fs: {...base, driver: base.driver} as typeof base, access: 'ro' },
         ] });
         try {
             await base.driver.createFile({ name: 'one.seq', parentPath: '/folder', type: 'seqfile', recursive: true });
@@ -27,6 +27,32 @@ describe('VFS IO statistics', () => {
             expect(typeProbe.mock.calls.filter(([path]) => path === '/folder/one.seq')).toHaveLength(1);
             expect(typeProbe.mock.calls.filter(([path]) => path === '/folder/two.seq')).toHaveLength(1);
         } finally { await view.dispose(); await manager.dispose(); }
+    });
+
+    it('delegates complete paths through nested views without multiplying physical prefix checks', async () => {
+        const backend = new MemoryBackend(), stat = backend.stat.bind(backend);
+        const statType = vi.fn(async (path: string) => {const node = await stat(path); return node ? {type: node.type} : null;});
+        const {manager} = await createVFS({rootBackend: Object.assign(backend, {statType})});
+        const base = await manager.openFileSystem('/');
+        await base.driver.createFile({parentPath: '/deep/shared/path', name: 'note.md', content: 'safe', recursive: true});
+        statType.mockClear();
+        await base.driver.readContent('/deep/shared/path/note.md', {encoding: 'utf-8'});
+        const baseline = statType.mock.calls.map(([path]) => path);
+        const views = [];
+        let fs = base;
+        try {
+            for (let depth = 0; depth < 8; depth++) {
+                fs = createFileSystemView({viewId: `nested-${depth}`, mounts: [{mountId: 'root', at: '/', fs, access: 'rw'}]});
+                views.push(fs); statType.mockClear();
+                expect(await fs.driver.readContent('/deep/shared/path/note.md', {encoding: 'utf-8'})).toBe('safe');
+                expect(statType.mock.calls.map(([path]) => path)).toEqual(baseline);
+            }
+            statType.mockImplementation(async path => path === '/deep/shared' ? {type: 'symlink' as const}
+                : await stat(path).then(node => node ? {type: node.type} : null));
+            await expect(fs.driver.readContent('/deep/shared/path/note.md')).rejects.toMatchObject({code: 'EACCES'});
+            await expect(fs.driver.writeContent('/deep/shared/path/note.md', 'blocked')).rejects.toMatchObject({code: 'EACCES'});
+            await expect(fs.driver.getNode('/../escape')).rejects.toMatchObject({code: 'EINVAL'});
+        } finally {for (const view of views.reverse()) await view.dispose(); await manager.dispose();}
     });
 
     it('uses type-only probes through nested views without caching existence or losing virtual parents', async () => {

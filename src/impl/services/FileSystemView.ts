@@ -171,6 +171,11 @@ export class FileSystemView implements IFileSystem {
         probes?: Map<string, Promise<Pick<FSNode, 'type'> | null>>): Promise<Pick<FSNode, 'type'> | null | undefined> {
         checkOperation(options);
         const source = this.sourcePath(m, path);
+        // An inner view validates its complete source path and mount grant itself.
+        // Rewalking its prefixes here multiplies the same checks at every layer.
+        if (m.fs instanceof FileSystemView) {
+            return this.invoke(m, m.fs.driver, 'getNodeType', [source, options]);
+        }
         // The prefix walk only needs the node type. Prefer the driver's type-only lookup so a
         // backend whose `getNode` fetches metadata over a remote/sidecar round trip can skip it.
         // Segments are checked concurrently; a backend coalesces those type stats into one host call.
@@ -258,7 +263,7 @@ export class FileSystemView implements IFileSystem {
         if (!this.visible(path)) throw new FSError('EACCES', 'Path is outside the system projection');
         const m = this.find(path);
         if (m) {
-            await this.noLinks(m, path, options);
+            if (!(m.fs instanceof FileSystemView)) await this.noLinks(m, path, options);
             const value = await this.invoke(m, m.fs.driver, 'getNode', [this.sourcePath(m, path), options]);
             if (value) return this.node(m, value);
         }
@@ -348,7 +353,7 @@ export class FileSystemView implements IFileSystem {
         if (expected && m !== expected) throw new FSError('EXMOUNT', 'Transaction crossed a mount');
         for (const path of paths) {
             if (this.binding(path, write, structural) !== m) throw new FSError('EXMOUNT', 'Operation crossed a mount');
-            await this.noLinks(m, path, options);
+            if (api || !(m.fs instanceof FileSystemView)) await this.noLinks(m, path, options);
         }
         if (method === 'move' || method === 'copy') {
             const target = normalizeVirtualPath(args[1] ?? '/');
@@ -357,10 +362,10 @@ export class FileSystemView implements IFileSystem {
             for (const path of paths) {
                 const destination = P.join(target, args[2] && method === 'copy' ? args[2] : P.basename(path));
                 if (this.binding(destination, true, true) !== m) throw new FSError('EXMOUNT', 'Destination crossed a mount');
-                await this.noLinks(m, destination, options);
+                if (api || !(m.fs instanceof FileSystemView)) await this.noLinks(m, destination, options);
             }
             if (method === 'copy' && (await this.stat(paths[0]))?.type === 'directory') throw new FSCapabilityError('Recursive copy requires a view-aware copy operation');
-            await this.noLinks(m, target, options);
+            if (api || !(m.fs instanceof FileSystemView)) await this.noLinks(m, target, options);
             args[1] = this.sourcePath(m, target);
         }
         if (method === 'rename') {
@@ -451,7 +456,7 @@ export class FileSystemView implements IFileSystem {
             const mount = this.binding(path, false);
             if (owner && owner !== mount) throw new FSError('EXMOUNT', 'Record transaction crossed a mount');
             owner = mount;
-            if (!api) paths.push(path);
+            if (!api && !(mount.fs instanceof FileSystemView)) paths.push(path);
             mapped.push({ fileIdOrPath: this.sourcePath(mount, path), key: request.key });
         }
         if (paths.length) {
@@ -488,7 +493,7 @@ export class FileSystemView implements IFileSystem {
         // IndexedDB transactions auto-commit while unrelated node IO is awaited.
         // Record transactions only accept sources without link traversal; their
         // callback performs synchronous path/mount checks and record IO alone.
-        if (!api) await this.noLinks(m, path);
+        if (!api && !(m.fs instanceof FileSystemView)) await this.noLinks(m, path);
         const target = api ?? (m.fs.meta as any)[group];
         if (!target) throw new FSCapabilityError(group);
         args[0] = this.sourcePath(m, path);

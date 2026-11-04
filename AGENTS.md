@@ -127,3 +127,5 @@ tags 更新的 `node:updated.reason` 统一为 metadata，changedFields 保留 t
 批量 SeqFile 读取 `getEntries/getEntriesMany` 使用同一 `IRecordStore.readTransaction` 只读快照契约，路径映射必须转发。缺失端口报 `ECAPABILITY`，不得转入写事务；所有内置后端已实现。写入、CAS 和显式 `transaction` 仍保持原子事务。`walkEntries({order: "key", offset, limit})` 明确请求底层有序键分页，不应先加载全部记录正文再截取。
 
 FileSystemView event listeners share one upstream subscription per mount. Filter typed listeners before payload projection and reuse path strings only within the current event; callback payloads remain independently owned. Last-listener removal and view/DirectoryFS disposal release upstream subscriptions.
+
+Nested FileSystemView sources own complete mapped-path validation. Outer views retain their own mount, visibility and write checks but delegate whole paths to known inner views instead of recursively expanding every prefix. Unknown sources still receive full prefix validation. Do not infer physical path safety from advertised capabilities or retain link verdicts across operations.
