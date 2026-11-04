@@ -8,7 +8,7 @@
 
 import { MemoryBackend } from '../src/testing/memory-backend';
 import { createVFS } from '../src/impl/factory';
-import type { IVFSManager, IFileSystem, IStorageBackend } from '@itookit/vfs-core';
+import type { IVFSManager, IFileSystem, IStorageBackend } from '@nestos/vfs-core';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Backend factories

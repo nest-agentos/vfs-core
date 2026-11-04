@@ -1,12 +1,12 @@
 /**
  * @file packages/vfs-core/src/index.ts
- * @desc @itookit/vfs-core 统一入口 — VFS 协议 + 引擎 + 事件总线 + 工具
+ * @desc @nestos/vfs-core 统一入口 — VFS 协议 + 引擎 + 事件总线 + 工具
  *
  * 使用方式：
- *   import { createVFS, VFSManager, VFSEngine } from '@itookit/vfs-core';
- *   import { MemoryBackend } from '@itookit/vfs-core';
- *   import type { IVFSManager, IFileSystem, FSNode } from '@itookit/vfs-core';
- *   import { EventBus } from '@itookit/vfs-core';
+ *   import { createVFS, VFSManager, VFSEngine } from '@nestos/vfs-core';
+ *   import { MemoryBackend } from '@nestos/vfs-core';
+ *   import type { IVFSManager, IFileSystem, FSNode } from '@nestos/vfs-core';
+ *   import { EventBus } from '@nestos/vfs-core';
  */
 
 // ── VFS 协议层 (接口/类型/常量/错误) ──

@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { setupVFS, type TestVFS } from './helpers';
-import { pipe, type IIOStream } from '@itookit/vfs-core';
+import { pipe, type IIOStream } from '@nestos/vfs-core';
 
 /** 内存实现 IIOStream,用于验证 pipe 行为。 */
 function makeMemoryStream(initial: string): IIOStream {

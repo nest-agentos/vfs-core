@@ -3,7 +3,7 @@
  * addRef, removeRef, walkOutgoing, walkIncoming, hasRef, syncOutgoing.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { Reference } from '@itookit/vfs-core';
+import type { Reference } from '@nestos/vfs-core';
 import { setupVFS, type TestVFS } from './helpers';
 
 describe('Reference operations (IndexedDB backend)', () => {
@@ -16,13 +16,13 @@ describe('Reference operations (IndexedDB backend)', () => {
         return `/${name}`;
     }
 
-    async function collectOutgoing(idOrPath: string, opts?: import('@itookit/vfs-core').RefQueryOptions): Promise<Reference[]> {
+    async function collectOutgoing(idOrPath: string, opts?: import('@nestos/vfs-core').RefQueryOptions): Promise<Reference[]> {
         const refs: Reference[] = [];
         await vfs.fs.meta.refs!.walkOutgoing(idOrPath, (r) => { refs.push(r); return true; }, opts);
         return refs;
     }
 
-    async function collectIncoming(idOrPath: string, opts?: import('@itookit/vfs-core').RefQueryOptions): Promise<Reference[]> {
+    async function collectIncoming(idOrPath: string, opts?: import('@nestos/vfs-core').RefQueryOptions): Promise<Reference[]> {
         const refs: Reference[] = [];
         await vfs.fs.meta.refs!.walkIncoming(idOrPath, (r) => { refs.push(r); return true; }, opts);
         return refs;

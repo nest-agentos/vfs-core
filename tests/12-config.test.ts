@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { freshMem } from './helpers';
 import { createVFS } from '../src/impl/factory';
-import type { IVFSManager, IConfigService } from '@itookit/vfs-core';
+import type { IVFSManager, IConfigService } from '@nestos/vfs-core';
 
 interface ConfigVFS {
     manager: IVFSManager;

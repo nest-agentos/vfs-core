@@ -1,4 +1,4 @@
-# @itookit/vfs-core
+# @nestos/vfs-core
 
 VFS 唯一入口 — 协议层 + 引擎实现 + 事件总线 + 工具。
 
@@ -9,7 +9,7 @@ VFS 唯一入口 — 协议层 + 引擎实现 + 事件总线 + 工具。
 - **事件总线**:通用 `EventBus`/`EventBuffer`,被 VFS 与 LLM/UI 共用。
 - **工具**:`guessMimeType`、序列化、编码、路径、校验、`pipe` 等。
 
-**依赖**:`yaml`(序列化)、`ignore`（Git ignore 语法匹配）。不依赖 `@itookit/common`。
+**依赖**:`yaml`(序列化)、`ignore`（Git ignore 语法匹配）。不依赖 `@nestos/common`。
 
 ## 结构
 
@@ -87,8 +87,8 @@ SeqFile 的 `getEntries` 在事务内优先调用记录后端可选的 `getRecor
 
 ## 消费关系
 
-- `@itookit/ui-common` 的 `IEditor` 引用 vfs-core 的 `IFileSystem` 类型。
-- `@itookit/vfsdriver-indexeddb` / `@itookit/vfsdriver-localfs` 依赖 vfs-core,实现 `IStorageBackend`。
+- `@nestos/ui-common` 的 `IEditor` 引用 vfs-core 的 `IFileSystem` 类型。
+- `@nestos/vfsdriver-indexeddb` / `@nestos/vfsdriver-localfs` 依赖 vfs-core,实现 `IStorageBackend`。
 - 各业务/UI 包(VFS 类型)直接依赖 vfs-core。
 
 ## 事件总线注意
@@ -101,11 +101,11 @@ SeqFile 的 `getEntries` 在事务内优先调用记录后端可选的 `getRecor
 ## 测试
 
 ```bash
-pnpm --filter @itookit/vfs-core test        # vitest run — 引擎 + 协议集成测试
-pnpm --filter @itookit/vfs-core typecheck   # tsc --noEmit
+pnpm --filter @nestos/vfs-core test        # vitest run — 引擎 + 协议集成测试
+pnpm --filter @nestos/vfs-core typecheck   # tsc --noEmit
 ```
 
-LocalFS 后端测试在 `@itookit/vfsdriver-localfs`,IndexedDB 后端测试在 `@itookit/vfsdriver-indexeddb`。
+LocalFS 后端测试在 `@nestos/vfsdriver-localfs`,IndexedDB 后端测试在 `@nestos/vfsdriver-indexeddb`。
 
 文件发现使用 `discoverFiles` + `FileDiscoverySource`：每次搜索从授权边界继承 `.gitignore` / `.mindosignore`，在遍历前剪枝，缓存仅限本次搜索。`IFileSystem.discoveryRoot` 可选声明规则边界；FileSystemView 必须透传嵌套视图边界并限制在当前挂载内。忽略规则不改变直接读写权限。回归在 `tests/file-discovery.test.ts`。
 

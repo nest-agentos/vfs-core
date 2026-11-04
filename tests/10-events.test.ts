@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { setupVFS, type TestVFS } from './helpers';
-import type { FSEvent } from '@itookit/vfs-core';
+import type { FSEvent } from '@nestos/vfs-core';
 
 describe('Event emission (IndexedDB backend)', () => {
     let vfs: TestVFS;
