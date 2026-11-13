@@ -21,7 +21,7 @@ export interface FileSystemMount {
 export interface FileSystemViewOptions {
     viewId: string;
     revision?: number;
-    /** Host files can explicitly disable MindOS tag metadata. */
+    /** Host files can explicitly disable NestOS tag metadata. */
     tags?: boolean;
     /** Host-owned external directories never expose or persist tag metadata. */
     external?: boolean;

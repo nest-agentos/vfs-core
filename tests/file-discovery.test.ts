@@ -35,10 +35,10 @@ it('applies NestOS rules after legacy rules and preserves includeIgnored', async
         '/keep.log', '/drop.log', '/legacy.txt', '/private.txt', '/visible.txt']));
 });
 
-it('inherits nested rules, anchored patterns, negation and MindOS overrides', async () => {
+it('inherits nested rules, anchored patterns, negation and NestOS overrides', async () => {
     const fs = await fixture({
         '/.gitignore': '*.log\n/root-only.txt\nignored/\n!node_modules/\n',
-        '/.mindosignore': '!keep.log\nprivate.txt\n',
+        '/.nestosignore': '!keep.log\nprivate.txt\n',
         '/root-only.txt': '', '/sub/root-only.txt': '', '/keep.log': '', '/drop.log': '', '/private.txt': '',
         '/sub/.gitignore': '/local.txt\n!child.log\n   \n',
         '/sub/local.txt': '', '/sub/deep/local.txt': '', '/sub/child.log': '', '/sub/deep/drop.log': '',
@@ -112,7 +112,7 @@ it('does not convert cancellation or unreadable rules into successful unfiltered
 
 
 it('preserves boundaries through Session wrappers and mounted source subdirectories', async () => {
-    const host = await fixture({ '/.gitignore': '*.txt', '/project/keep.txt': '', '/project/.mindosignore': 'private.txt',
+    const host = await fixture({ '/.gitignore': '*.txt', '/project/keep.txt': '', '/project/.nestosignore': 'private.txt',
         '/project/private.txt': '' });
     const view = createFileSystemView({ viewId: 'mount', mounts: [
         { mountId: 'workspace', at: '/workspace', fs: host, root: '/project', access: 'ro' },
@@ -122,7 +122,7 @@ it('preserves boundaries through Session wrappers and mounted source subdirector
     ] });
     cleanups.push(() => view.dispose(), () => wrapper.dispose());
     expect(wrapper.discoveryRoot('/workspace/keep.txt')).toBe('/workspace');
-    expect(await list(wrapper, '/workspace')).toEqual(['/workspace/.mindosignore', '/workspace/keep.txt']);
+    expect(await list(wrapper, '/workspace')).toEqual(['/workspace/.nestosignore', '/workspace/keep.txt']);
     expect(await list(wrapper, '/workspace', { includeIgnored: true })).toContain('/workspace/private.txt');
     expect(await wrapper.driver.getNode('/project/keep.txt')).toBeNull();
 });
