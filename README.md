@@ -20,8 +20,12 @@ await manager.dispose();
 
 The workspace uses source exports; `pnpm pack` replaces them with the ESM/CJS and declaration exports in `publishConfig`. Testing helpers have a separate `@nestos/vfs-core/testing` entry. `@nestos/vfs-core/protocol` exposes contracts and errors without engine assembly; `@nestos/vfs-core/path` exposes strict virtual path normalization without loading filesystem views. All entries share the same error classes. Drivers implement storage contracts; host applications inject project policy. Optional sync integration must live outside this repository.
 
+`@nestos/vfs-core/seq` provides typed `seqRowControl` commands for optional structured SeqFile projections. A schema declares the entry-key prefix, typed columns and indexes; callers request selected columns, filters and cursor pages. The raw entry string and CAS semantics remain unchanged. Drivers use `/seq/driver` validation and pagination primitives, advertise `structuredRows`, and implement `IRecordTransaction.rowControl`; unsupported backends report `ECAPABILITY` without loading all entries. File/device handles share the optional `ioctl` entry. Schema changes and rows can share a transaction with ordinary SeqFile receipts.
+
 See [development instructions](AGENTS.md), [key classes](doc/key-classes.md) and [entry point](src/index.ts).
 
 In itookit a standalone checkout may be placed at `packages/vfs-core`. Local development resolves its public package exports; when the directory is absent, consumers install the declared npm version.
 
 `fs.capabilitiesAt(path).conditionalReplace` declares whether the backing store enforces whole-file revision preconditions. Unsupported `ifRevision` writes throw `ECAPABILITY` instead of silently discarding the condition. A backend without this capability can still perform ordinary writes; no atomic CAS guarantee is implied.
+
+`seqKeys` uses optional `seq.keys.page.v1` control pages to enumerate keys without values or totals. Record drivers advertise `keyPages` and supply ordered bounded `getRecordKeys`. `readTransaction` exposes a restricted snapshot port for read-only compound operations; callbacks cannot retain it after completion. Native path checks run inside recovered snapshots, while external callbacks from ordinary walks run after the snapshot closes.

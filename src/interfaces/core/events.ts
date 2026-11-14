@@ -102,11 +102,14 @@ export interface FSOperationPayload {
     operationId: string;
     operation: import('../plugin/plugin').FSOperationType;
     paths: string[];
+    command?: string;
+    stage?: string;
 }
 export interface FSOperationFinishedPayload extends FSOperationPayload {
     outcome: 'success' | 'failure';
     durationMs: number;
     errorCode?: string;
+    count?: number;
 }
 export interface FSContentPayload { operationId: string; path: string; }
 export interface FSContentFinishedPayload extends FSContentPayload {

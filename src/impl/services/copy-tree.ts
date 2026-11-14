@@ -2,6 +2,7 @@ import type { IFileSystem } from '../../protocol';
 import { FSError, FSCapabilityError } from '../../protocol';
 import * as P from '../../utils/path';
 import { normalizeVirtualPath } from './FileSystemView';
+import {migrationRowSchema,copySeqSchema} from './copy-seq-schema';
 
 /**
  * Startup migration only: source must be quiescent and destination unpublished.
@@ -34,12 +35,16 @@ export async function copyFileSystemTree(source: IFileSystem, sourceRoot: string
             // their records explicitly too; serialized readContent is not a record import.
             const entries: Array<{ key: string; value: string }> = [];
             if (source.meta.seq) await source.meta.seq.walkEntries(from, entry => { entries.push(entry); return true; });
+            const rowSchema = await migrationRowSchema(source,from);
+            const rowTarget = (await target.capabilitiesAt(to)).structuredSeqFiles === true;
+            if (rowSchema && !rowTarget) throw new FSCapabilityError('migration.structuredSeqFiles');
             if (node.type === 'seqfile' || entries.length) {
                 if (!target.meta.seq?.transaction) throw new FSCapabilityError('migration.seq.transaction');
             }
             if (node.type === 'file') await target.driver.writeContent(to, await source.driver.readContent(from, { encoding: 'binary' }));
             if (target.meta.seq?.transaction) {
                 await target.meta.seq.transaction(async tx => {
+                    await copySeqSchema(tx,to,rowSchema,rowTarget);
                     const stale: string[] = [];
                     const keys = new Set(entries.map(entry => entry.key));
                     await tx.walkEntries(to, entry => { if (!keys.has(entry.key)) stale.push(entry.key); return true; });

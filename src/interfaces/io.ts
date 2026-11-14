@@ -14,6 +14,8 @@ import type { FileContent } from './core/types';
  * - `IDeviceHandle`(LLM/TTY 会话):read/write + readStream + close
  */
 export interface IIOStream {
+    /** Optional versioned control entry shared by file and device handles. */
+    ioctl?(command: string | number, input?: unknown): Promise<unknown>;
     /** 读取一次输出 */
     read(): Promise<FileContent>;
     /** 写入数据 */

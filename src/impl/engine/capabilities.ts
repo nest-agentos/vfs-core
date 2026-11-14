@@ -28,6 +28,8 @@ export function detectCapabilities(backend: IStorageBackend, overrides: Capabili
         deviceFiles: overrides.deviceFiles ?? false,
         seqFiles: !!backend.records,
         transactionalSeqFiles: !!backend.records?.transaction,
+        structuredSeqFiles: backend.records?.structuredRows === true,
+        seqKeyPages: backend.records?.keyPages === true,
         references: !!backend.records,
         symlinks: !!backend.symlink,
         hardlinks: false,

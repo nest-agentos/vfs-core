@@ -10,6 +10,10 @@ export function mapRecordPaths(records: IRecordStore, path: (systemPath: string)
             walkRecordFields: (p, callback, options) => tx.walkRecordFields(path(p), callback, options),
         };
         if (tx.getRecordFields) mapped.getRecordFields = (p, fields) => tx.getRecordFields!(path(p), fields);
+        if (tx.rowControl) mapped.rowControl = (p, command, input) => tx.rowControl!(path(p),command,input);
+        if (tx.getRecordKeys) mapped.getRecordKeys = (p,options) => tx.getRecordKeys!(path(p),options);
+        if (tx.keyPages !== undefined) Object.defineProperty(mapped,'keyPages',{get:() => tx.keyPages,enumerable:true});
+        if (tx.structuredRows !== undefined) Object.defineProperty(mapped,'structuredRows',{get:() => tx.structuredRows,enumerable:true});
         if (tx.getRecordFieldsMany) {
             mapped.getRecordFieldsMany = requests =>
                 tx.getRecordFieldsMany!(requests.map(request => ({ path: path(request.path), field: request.field })));
@@ -18,6 +22,7 @@ export function mapRecordPaths(records: IRecordStore, path: (systemPath: string)
     };
     return {
         ...scoped(records),
+        get pathsInTransaction() {return records.pathsInTransaction;},
         setAllRecordFields: (p, fields) => records.setAllRecordFields(path(p), fields),
         clearRecordFields: p => records.clearRecordFields(path(p)),
         createRecordIndex: (p, field) => records.createRecordIndex(path(p), field),

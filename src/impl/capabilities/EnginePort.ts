@@ -37,5 +37,7 @@ export interface EnginePort {
     toVirtualPath(path: string): string;
     toVirtualNode(node: FSNode): FSNode;
     resolveNode(path: string): Promise<{ node: FSNode; realPath: string }>;
+    /** Resolve record identity without loading unrelated node metadata. */
+    resolveRecordPath?(path: string): Promise<string>;
     emit<E extends FSEventType>(type: E, payload: FSEventPayloadMap[E]): void;
 }

@@ -6,6 +6,13 @@
  * 未实现时，VFS Engine 退化为整体 JSON 序列化到 IContentStore。
  */
 
+import type {ISeqRowControl} from '../capabilities/seq-rows';
+export interface RecordKeysOptions {prefix?: string; after?: string; limit: number;}
+export interface IRecordKeyReader {
+    readonly keyPages?: boolean;
+    getRecordKeys?(path: string, options: RecordKeysOptions): Promise<string[]>;
+}
+
 export type RecordValue =
     | string
     | number
@@ -51,7 +58,7 @@ export interface RecordFieldRequest {
 }
 
 /** Atomic record operations scoped to one storage backend. */
-export interface IRecordTransaction {
+export interface IRecordTransaction extends ISeqRowControl, IRecordKeyReader {
     getRecordField(path: string, field: string): Promise<RecordValue | undefined>;
     /** Read exact fields from one record path in one backend operation when supported. */
     getRecordFields?(path: string, fields: string[]): Promise<Record<string, RecordValue>>;
@@ -69,7 +76,9 @@ export interface IRecordTransaction {
     ): Promise<{ total: number; processed: number }>;
 }
 
-export interface IRecordStore {
+export interface IRecordStore extends ISeqRowControl, IRecordKeyReader {
+    /** Native snapshots may safely include asynchronous filesystem identity checks. */
+    readonly pathsInTransaction?: boolean;
     getRecordField(path: string, field: string): Promise<RecordValue | undefined>;
     /** Read exact fields from one record path in one backend operation when supported. */
     getRecordFields?(path: string, fields: string[]): Promise<Record<string, RecordValue>>;

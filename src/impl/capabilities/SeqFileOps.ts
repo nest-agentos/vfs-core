@@ -6,6 +6,7 @@
 import type {
     ISeqFileOperations,
     ISeqFileTransaction,
+    ISeqFileReadTransaction,
     SeqFileEntry,
     SeqFileReadRequest,
     RecordQuery,
@@ -16,10 +17,12 @@ import type {
     IRecordTransaction,
     SeqCompareAndSetOptions,
 } from '../../protocol';
-import { FSError, FSCapabilityError } from '../../protocol';
+import { FSError, FSCapabilityError, SEQ_FIELD_PREFIX, SEQ_ROW_COMMANDS, SEQ_CONTROL_COMMANDS, type SeqControlCommand } from '../../protocol';
 import type { EnginePort } from './EnginePort';
+import {seqRowOperation} from './seq-row-operation';
+import {seqKeyPage} from './seq-key-page';
 
-export const SEQ_FIELD_PREFIX = '__vfs_seq__:';
+export {SEQ_FIELD_PREFIX} from '../../protocol';
 const SEQ_COUNTER_PREFIX = '__vfs_seq_counter__:';
 
 export function stringifyRecordValue(value: RecordValue): string {
@@ -92,6 +95,7 @@ async function readEntriesMany(
 }
 
 class SeqTransaction implements ISeqFileTransaction {
+    get keyPages(): boolean {return this.records.keyPages === true;}
     readonly changed = new Set<string>();
     readonly changes: import('../../protocol').SeqRecordChange[] = [];
     constructor(
@@ -100,6 +104,14 @@ class SeqTransaction implements ISeqFileTransaction {
     ) {}
 
     private path(path: string): string { return this.fs.toRealPath(path); }
+
+    async ioctl(path: string, command: SeqControlCommand, input?: unknown): Promise<unknown> {
+        if (command === 'seq.keys.page.v1') return seqKeyPage(this.records,this.path(path),input);
+        if (!Object.hasOwn(SEQ_ROW_COMMANDS,command) || this.records.structuredRows !== true || !this.records.rowControl) throw new FSCapabilityError('structuredSeqFiles');
+        const real = this.path(path), result = await this.records.rowControl(real,command,input);
+        if (SEQ_ROW_COMMANDS[command] === 'write') this.changed.add(real);
+        return result;
+    }
 
     async getEntry(path: string, key: string): Promise<string | null> {
         const value = await this.records.getRecordField(this.path(path), seqField(key));
@@ -174,58 +186,87 @@ class SeqTransaction implements ISeqFileTransaction {
 }
 
 export class SeqFileOps implements ISeqFileOperations {
+    get keyPages(): boolean {return this.records.keyPages === true;}
     constructor(
         private readonly fs: EnginePort,
         private readonly records: IRecordStore,
     ) {}
 
-    private async path(path: string): Promise<string> {
-        return (await this.fs.resolveNode(path)).realPath;
+    private async path(path: string, fast = false): Promise<string> {
+        return fast && this.fs.resolveRecordPath ? this.fs.resolveRecordPath(path) : (await this.fs.resolveNode(path)).realPath;
+    }
+    private async readPath<T>(path: string, run: (records: IRecordTransaction, real: string) => Promise<T>): Promise<T> {
+        const snapshot = this.records.readTransaction;
+        if (this.records.pathsInTransaction && snapshot)
+            return snapshot.call(this.records,async (records: IRecordTransaction) => run(records,await this.path(path,true))) as Promise<T>;
+        const real = await this.path(path);
+        return snapshot ? snapshot.call(this.records,(records: IRecordTransaction) => run(records,real)) as Promise<T> : run(this.records,real);
+    }
+    private async writePath<T>(path: string, run: (records: IRecordTransaction, real: string) => Promise<T>): Promise<T> {
+        const transaction = this.records.transaction;
+        if (this.records.pathsInTransaction && transaction)
+            return transaction.call(this.records,async (records: IRecordTransaction) => run(records,await this.path(path,true))) as Promise<T>;
+        const real = await this.path(path);
+        return transaction ? transaction.call(this.records,(records: IRecordTransaction) => run(records,real)) as Promise<T> : run(this.records,real);
+    }
+
+    ioctl(path: string, command: SeqControlCommand, input?: unknown): Promise<unknown> {
+        return seqRowOperation(this.fs,path,command,() => this.control(path,command,input));
+    }
+    private async control(path: string, command: SeqControlCommand, input?: unknown): Promise<unknown> {
+        if (command === 'seq.keys.page.v1') return this.readPath(path,(records,real) => seqKeyPage(records,real,input));
+        if (!Object.hasOwn(SEQ_ROW_COMMANDS,command) || this.records.structuredRows !== true || !this.records.rowControl) throw new FSCapabilityError('structuredSeqFiles');
+        const write = SEQ_ROW_COMMANDS[command] === 'write';
+        const transaction = write ? this.records.transaction : this.records.readTransaction;
+        if (!transaction) throw new FSCapabilityError('structuredSeqFiles');
+        let changed: string | undefined;
+        const run = async (tx: IRecordTransaction, real: string) => {
+            if (!tx.rowControl) throw new FSCapabilityError('structuredSeqFiles');
+            changed = real;
+            return tx.rowControl(real,command,input);
+        };
+        const result = await (write ? this.writePath(path,run) : this.readPath(path,run));
+        if (write) this.emitCommitted([changed!],[]);
+        return result;
     }
 
     async getEntry(path: string, key: string): Promise<string | null> {
-        const value = await this.records.getRecordField(await this.path(path), seqField(key));
+        const value = await this.readPath(path,(records,real) => records.getRecordField(real,seqField(key)));
         return value === undefined ? null : stringifyRecordValue(value);
     }
 
     async getEntries(path: string, keys: string[]): Promise<Record<string, string>> {
         if (!keys.length) return {};
-        const realPath = await this.path(path);
-        const read = (records: IRecordTransaction) => readEntries(records, realPath, keys);
         if (!this.records.readTransaction) throw new FSError('ECAPABILITY', 'Record backend requires readTransaction for batch snapshots');
-        return this.records.readTransaction(read);
+        return this.readPath(path,(records,real) => readEntries(records,real,keys));
     }
 
     /** 逐路径解析；节点不存在（ENOENT）时记为 null 而非抛错。 */
-    private async resolveMany(requests: ReadonlyArray<SeqFileReadRequest>): Promise<Array<string | null>> {
-        const cache = new Map<string, string | null>();
-        const paths: Array<string | null> = [];
+    private async resolveMany(requests: ReadonlyArray<SeqFileReadRequest>, fast = false): Promise<Array<string | null>> {
+        const cache = new Map<string, Promise<string | null>>();
         for (const request of requests) {
             if (!cache.has(request.fileIdOrPath)) {
-                try {
-                    cache.set(request.fileIdOrPath, await this.path(request.fileIdOrPath));
-                } catch (error) {
+                cache.set(request.fileIdOrPath,this.path(request.fileIdOrPath,fast).catch(error => {
                     if (!isMissingRecord(error)) throw error;
-                    cache.set(request.fileIdOrPath, null);
-                }
+                    return null;
+                }));
             }
-            paths.push(cache.get(request.fileIdOrPath) ?? null);
         }
-        return paths;
+        return Promise.all(requests.map(request => cache.get(request.fileIdOrPath)!));
     }
 
     async getEntriesMany(requests: ReadonlyArray<SeqFileReadRequest>): Promise<Array<string | null>> {
         if (!requests.length) return [];
-        const paths = await this.resolveMany(requests);
         const keys = requests.map(request => request.key);
-        const read = (records: IRecordTransaction) => readEntriesMany(records, paths, keys);
         if (!this.records.readTransaction) throw new FSError('ECAPABILITY', 'Record backend requires readTransaction for batch snapshots');
-        return this.records.readTransaction(read);
+        if (this.records.pathsInTransaction) return this.records.readTransaction(async records =>
+            readEntriesMany(records,await this.resolveMany(requests,true),keys));
+        const paths = await this.resolveMany(requests);
+        return this.records.readTransaction(records => readEntriesMany(records,paths,keys));
     }
 
     async setEntry(path: string, key: string, value: string): Promise<void> {
-        const realPath = await this.path(path);
-        await this.records.setRecordField(realPath, seqField(key), value);
+        const realPath = await this.writePath(path,async (records,real) => {await records.setRecordField(real,seqField(key),value); return real;});
         this.emitCommitted([realPath], [{ path: realPath, key, type: 'set' }]);
     }
 
@@ -239,13 +280,12 @@ export class SeqFileOps implements ISeqFileOperations {
     }
 
     async deleteEntry(path: string, key: string): Promise<void> {
-        const realPath = await this.path(path);
-        await this.records.deleteRecordField(realPath, seqField(key));
+        const realPath = await this.writePath(path,async (records,real) => {await records.deleteRecordField(real,seqField(key)); return real;});
         this.emitCommitted([realPath], [{ path: realPath, key, type: 'delete' }]);
     }
 
     async hasEntry(path: string, key: string): Promise<boolean> {
-        return (await this.records.getRecordField(await this.path(path), seqField(key))) !== undefined;
+        return (await this.readPath(path,(records,real) => records.getRecordField(real,seqField(key)))) !== undefined;
     }
 
     async walkEntries(
@@ -253,20 +293,21 @@ export class SeqFileOps implements ISeqFileOperations {
         callback: (entry: SeqFileEntry) => boolean | Promise<boolean>,
         options?: { keyPrefix?: string; limit?: number; offset?: number; order?: 'key'; after?: string },
     ): Promise<{ total: number; processed: number }> {
+        const entries: SeqFileEntry[] = [];
+        const visit = (key: string, value: RecordValue) => ({key:seqKey(key),value:stringifyRecordValue(value)});
+        const fields = {prefix:seqField(options?.keyPrefix ?? ''),order:options?.order,
+            after:options?.after === undefined ? undefined : seqField(options.after),limit:options?.limit,offset:options?.offset};
+        if (this.records.pathsInTransaction) {
+            const page = await this.readPath(path,(records,real) => records.walkRecordFields(real,(key,value) => {
+                entries.push(visit(key,value)); return true;
+            },fields));
+            let processed = 0;
+            for (const entry of entries) {if (await callback(entry) === false) break; processed++;}
+            return {total:page.total,processed};
+        }
         return this.records.walkRecordFields(
             await this.path(path),
-            (key, value) => callback({
-                key: seqKey(key),
-                value: stringifyRecordValue(value),
-            }),
-            {
-                prefix: seqField(options?.keyPrefix ?? ''),
-                order: options?.order,
-                after: options?.after === undefined ? undefined : seqField(options.after),
-                limit: options?.limit,
-                offset: options?.offset,
-            },
-        );
+            (key,value) => callback(visit(key,value)),fields);
     }
 
     async queryEntries(
@@ -293,6 +334,26 @@ export class SeqFileOps implements ISeqFileOperations {
     private emitCommitted(paths: string[], changes: import('../../protocol').SeqRecordChange[]): void {
         if (paths.length) this.fs.emit('seq:committed', { paths: paths.map(path => this.fs.toVirtualPath(path)),
             changes: changes.map(change => ({ ...change, path: this.fs.toVirtualPath(change.path) })) });
+    }
+    readTransaction<T>(operation: (tx: ISeqFileReadTransaction) => Promise<T>): Promise<T> {
+        if (!this.records.readTransaction) throw new FSCapabilityError('seq.readTransaction');
+        return this.records.readTransaction(async records => {
+            const tx = new SeqTransaction(this.fs,records);
+            let active = true;
+            const guard = <A extends unknown[],R>(run:(...args:A) => Promise<R>) => async (...args:A):Promise<R> => {
+                if (!active) throw new FSError('EACCES','Read transaction is closed');
+                return run(...args);
+            };
+            const read: ISeqFileReadTransaction = {
+                keyPages:this.records.keyPages === true,
+                getEntry:guard(tx.getEntry.bind(tx)),getEntries:guard(tx.getEntries.bind(tx)),getEntriesMany:guard(tx.getEntriesMany.bind(tx)),walkEntries:guard(tx.walkEntries.bind(tx)),
+                ioctl:guard(async (path: string,command: Exclude<SeqControlCommand,'seq.rows.define.v1'>,input?: unknown) => {
+                    if (SEQ_CONTROL_COMMANDS[command as SeqControlCommand] === 'write') throw new FSError('EROFS','Read transaction cannot modify schema','seq.rows');
+                    return tx.ioctl(path,command,input);
+                }),
+            };
+            try {return await operation(read);} finally {active = false;}
+        });
     }
 
     async transaction<T>(operation: (tx: ISeqFileTransaction) => Promise<T>): Promise<T> {

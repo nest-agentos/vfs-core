@@ -30,6 +30,7 @@ import type { FSNode, FileContent, FSNodeMetadata } from '../core/types';
 // ═══════════════════════════════════════════════════════════════
 
 export type FSOperationType =
+    | 'ioctl'
     | 'create'
     | 'read'
     | 'write'

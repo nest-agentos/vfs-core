@@ -107,6 +107,11 @@ export class DirectoryContext implements EnginePort {
         if (!node) throw new FSNotFoundError(path);
         return { node, realPath };
     }
+    async resolveRecordPath(path: string): Promise<string> {
+        const realPath = this.toRealPath(path);
+        if (!await this.engine.tryStatType(realPath)) throw new FSNotFoundError(path,'seq.resolve');
+        return realPath;
+    }
 
     /** Trusted directory adapter; composed view enforces read/write grants. */
     assertWritable(_realPath: string): void {}

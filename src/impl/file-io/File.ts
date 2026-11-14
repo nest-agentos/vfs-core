@@ -20,7 +20,7 @@ import type {
     FSEventType,
     FSEvent,
 } from '../../protocol';
-import { FSNotFoundError } from '../../protocol';
+import { FSNotFoundError, FSCapabilityError, SEQ_CONTROL_COMMANDS, type SeqControlCommand } from '../../protocol';
 import * as P from '../../utils/path';
 import { toBuffer } from '../../utils/encoding';
 
@@ -115,6 +115,16 @@ export class FileHandle implements IFile {
     async getIcon(): Promise<string> { return (await this._requireNode()).icon ?? ''; }
     async getTags(): Promise<string[]> { return [...((await this._requireNode()).tags ?? [])]; }
     async setTags(tags: string[]): Promise<void> { await this.fs.meta.tags.setTags(this.path, tags); }
+
+    ioctl(command: string | number, input?: unknown): Promise<unknown> {
+        return this._track(async () => {
+            if (typeof command !== 'string' || !Object.hasOwn(SEQ_CONTROL_COMMANDS,command) || !this.fs.meta.seq?.ioctl)
+                throw new FSCapabilityError('ioctl');
+            const node = await this._requireNode();
+            if (node.type !== 'file' && node.type !== 'seqfile') throw new FSCapabilityError('structuredSeqFiles');
+            return this.fs.meta.seq.ioctl(this.path,command as SeqControlCommand,input);
+        });
+    }
 
     // ══ High-level content ═════════════════════════════════════
 

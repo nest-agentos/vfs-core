@@ -209,3 +209,9 @@ export { checkOperation, FSOperationCancelledError } from './interfaces/core/ope
 export type { OperationOptions, OperationOutcome } from './interfaces/core/operation';
 
 export type { FileStorageBackend, FileReader, FileStat, FileEntry, FilePage, FileListOptions, FileReadOptions, FileReadResult, FileMutations, ReplaceCondition } from './interfaces/storage/file-storage';
+
+export * from './interfaces/capabilities/seq-rows';
+export {SEQ_FIELD_PREFIX} from './interfaces/capabilities/seq-file';
+export type {ISeqFileReadTransaction} from './interfaces/capabilities/seq-file';
+export * from './interfaces/capabilities/seq-control';
+export type {RecordKeysOptions} from './interfaces/storage/record-backend';

@@ -223,6 +223,8 @@ export interface FSCapabilities {
     readonly deviceFiles: boolean;
     readonly seqFiles: boolean;
     readonly transactionalSeqFiles?: boolean;
+    readonly structuredSeqFiles?: boolean;
+    readonly seqKeyPages?: boolean;
     readonly references: boolean;
     readonly symlinks: boolean;
     readonly hardlinks: boolean;

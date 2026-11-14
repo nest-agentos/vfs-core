@@ -5,7 +5,7 @@ import type {
     FSEvent, FSEventType, FSSearchQuery, FSSearchResult, TreeWalkCallback, TreeWalkOptions,
     SeqFileReadRequest,
 } from '../../protocol';
-import { FSError, FSCapabilityError } from '../../protocol';
+import { FSError, FSCapabilityError, SEQ_CONTROL_COMMANDS, type SeqControlCommand } from '../../protocol';
 import { onContentEvent } from '../file-io/content-events';
 import { FileHandle } from '../file-io/File';
 import * as P from '../../utils/path';
@@ -408,7 +408,7 @@ export class FileSystemView implements IFileSystem {
     }
 
     private makeMeta(group: 'assets' | 'tags' | 'seq' | 'refs'): any {
-        return new Proxy({}, { get: (_, method: string) => (...args: any[]) => this.operation(async () => {
+        return new Proxy({}, { get: (_, method: string) => group === 'seq' && method === 'keyPages' ? this.capabilities.seqKeyPages === true : (...args: any[]) => this.operation(async () => {
             if (group === 'tags' && method === 'listTagEntries') return this.indexedTags();
             if (group === 'tags' && method === 'getAllTags') {
                 const counts = new Map<string, number>();
@@ -424,6 +424,11 @@ export class FileSystemView implements IFileSystem {
                 return { total: matches.length, processed };
             }
             if (group === 'tags' && !this.capabilities.tags) throw new FSCapabilityError('tags');
+            if (group === 'seq' && method === 'readTransaction') {
+                const scope = args[1] ?? (this.mounts.length === 1 ? this.mounts[0].at : undefined);
+                if (!scope) throw new FSCapabilityError('Read transactions require a scopePath for multiple mounts');
+                return this.seqTransaction(scope,args[0],true);
+            }
             if (group === 'seq' && method === 'transaction') {
                 if (this.mounts.length !== 1) throw new FSCapabilityError('Use seqTransaction(scopePath, fn) for multiple mounts');
                 return this.seqTransaction(this.mounts[0].at, args[0]);
@@ -469,7 +474,7 @@ export class FileSystemView implements IFileSystem {
         const allowed: Record<string, readonly string[]> = {
             assets: ['getAssetDirPath', 'ensureAssetDir', 'putAsset', 'getAsset', 'deleteAsset', 'listAssets', 'removeAssetDir', 'hasAssetDir', 'validateAssetDir', 'repairAssetDir'],
             tags: ['setTags', 'addTag', 'removeTag'],
-            seq: ['getEntry', 'getEntries', 'getEntriesMany', 'setEntry', 'setEntries', 'deleteEntry', 'hasEntry', 'walkEntries', 'queryEntries', 'createIndex', 'deleteIndex', 'compareAndSet', 'increment', 'append'],
+            seq: ['ioctl', 'getEntry', 'getEntries', 'getEntriesMany', 'setEntry', 'setEntries', 'deleteEntry', 'hasEntry', 'walkEntries', 'queryEntries', 'createIndex', 'deleteIndex', 'compareAndSet', 'increment', 'append'],
             refs: ['addRef', 'removeRef', 'hasRef', 'walkOutgoing', 'walkIncoming', 'syncOutgoing'],
         };
         if (!allowed[group]?.includes(method)) throw new FSCapabilityError(method);
@@ -480,7 +485,8 @@ export class FileSystemView implements IFileSystem {
         const options = method === 'readContent' ? args[1] : method === 'writeContent' ? args[2]
             : method === 'createFile' || method === 'createDirectory' ? args[0] : method === 'delete' ? args[1] : ['rename', 'move'].includes(method) ? args[2] : undefined;
         checkOperation(options);
-        const write = !/^(get|has|list|walk|query|validate)/.test(method);
+        if (method === 'ioctl' && !Object.hasOwn(SEQ_CONTROL_COMMANDS,args[1])) throw new FSCapabilityError('ioctl');
+        const write = method === 'ioctl' ? SEQ_CONTROL_COMMANDS[args[1] as SeqControlCommand] === 'write' : !/^(get|has|list|walk|query|validate)/.test(method);
         const path = normalizeVirtualPath(args[0]);
         if (!this.readable(path)) throw new FSError('EACCES', 'Projection ancestors are navigation only');
         const m = this.binding(path, write);
@@ -541,21 +547,26 @@ export class FileSystemView implements IFileSystem {
         }
         return result;
     }
-    async seqTransaction<T>(scopePath: string, fn: (tx: any) => Promise<T>): Promise<T> {
+    async seqTransaction<T>(scopePath: string, fn: (tx: any) => Promise<T>, readOnly = false): Promise<T> {
         return this.operation(async () => {
-            const m = this.binding(scopePath, true);
+            const m = this.binding(scopePath, !readOnly);
             if (m.fs.capabilities.symlinks) throw new FSCapabilityError('linkSafeRecordTransactions');
             const seq = m.fs.meta.seq;
-            if (!seq?.transaction) throw new FSCapabilityError('seq.transaction');
-            return seq.transaction(async tx => {
+            const transaction = readOnly ? seq?.readTransaction : seq?.transaction;
+            if (!transaction) throw new FSCapabilityError(readOnly ? 'seq.readTransaction' : 'seq.transaction');
+            const run = transaction as (operation:(tx:any) => Promise<T>,scope?:string) => Promise<T>;
+            return run.call(seq,async tx => {
                 let active = true;
                 try {
-                    return await fn(new Proxy({}, { get: (_, key: string) => (...args: any[]) => {
+                    return await fn(new Proxy({}, { get: (_, key: string) => key === 'keyPages' ? tx.keyPages === true : (...args: any[]) => {
                         if (!active) return Promise.reject(new FSError('EACCES', 'Record transaction is closed'));
+                        if (readOnly && (!['getEntry','getEntries','getEntriesMany','walkEntries','ioctl'].includes(key)
+                            || key === 'ioctl' && SEQ_CONTROL_COMMANDS[args[1] as SeqControlCommand] === 'write'))
+                            return Promise.reject(new FSError('EROFS','Read transaction cannot modify records'));
                         return this.metaCall('seq', key, args, tx, m);
                     } }));
                 } finally { active = false; }
-            });
+            },this.sourcePath(m,scopePath));
         });
     }
 

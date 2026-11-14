@@ -8,6 +8,8 @@
  */
 
 import type { RecordQuery, RecordQueryOptions, RecordQueryResult } from '../storage/record-backend';
+import type {SeqControlCommand} from './seq-control';
+export const SEQ_FIELD_PREFIX = '__vfs_seq__:';
 
 export interface SeqFileEntry {
     key: string;
@@ -24,8 +26,13 @@ export interface SeqFileReadRequest {
     fileIdOrPath: string;
     key: string;
 }
+export type ISeqFileReadTransaction = Pick<ISeqFileTransaction,'getEntry' | 'getEntries' | 'getEntriesMany' | 'walkEntries' | 'keyPages'> & {
+    ioctl?(path: string, command: Exclude<SeqControlCommand,'seq.rows.define.v1'>, input?: unknown): Promise<unknown>;
+};
 
 export interface ISeqFileTransaction {
+    readonly keyPages?: boolean;
+    ioctl?(path: string, command: SeqControlCommand, input?: unknown): Promise<unknown>;
     getEntry(fileIdOrPath: string, key: string): Promise<string | null>;
     getEntries(fileIdOrPath: string, keys: string[]): Promise<Record<string, string>>;
     /**
@@ -50,6 +57,9 @@ export interface ISeqFileTransaction {
 }
 
 export interface ISeqFileOperations {
+    readonly keyPages?: boolean;
+    readTransaction?<T>(operation: (tx: ISeqFileReadTransaction) => Promise<T>, scopePath?: string): Promise<T>;
+    ioctl?(path: string, command: SeqControlCommand, input?: unknown): Promise<unknown>;
     getEntry(fileIdOrPath: string, key: string): Promise<string | null>;
     getEntries(fileIdOrPath: string, keys: string[]): Promise<Record<string, string>>;
     /**

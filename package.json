@@ -26,6 +26,16 @@
       "types": "./src/utils/virtual-path.ts",
       "import": "./src/utils/virtual-path.ts",
       "default": "./src/utils/virtual-path.ts"
+    },
+    "./seq": {
+      "types": "./src/seq.ts",
+      "import": "./src/seq.ts",
+      "default": "./src/seq.ts"
+    },
+    "./seq/driver": {
+      "types": "./src/seq-driver.ts",
+      "import": "./src/seq-driver.ts",
+      "default": "./src/seq-driver.ts"
     }
   },
   "publishConfig": {
@@ -72,6 +82,26 @@
         "require": {
           "types": "./dist/path.d.cts",
           "default": "./dist/path.cjs"
+        }
+      },
+      "./seq": {
+        "import": {
+          "types": "./dist/seq.d.ts",
+          "default": "./dist/seq.js"
+        },
+        "require": {
+          "types": "./dist/seq.d.cts",
+          "default": "./dist/seq.cjs"
+        }
+      },
+      "./seq/driver": {
+        "import": {
+          "types": "./dist/seq/driver.d.ts",
+          "default": "./dist/seq/driver.js"
+        },
+        "require": {
+          "types": "./dist/seq/driver.d.cts",
+          "default": "./dist/seq/driver.cjs"
         }
       }
     }

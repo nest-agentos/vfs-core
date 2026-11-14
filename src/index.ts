@@ -85,3 +85,5 @@ export { SeqEventJournal } from './eventbus/seq-event-journal';
 export type { EventCursor, JournalEvent, JournalPage, JournalTransaction } from './eventbus/journal-types';
 
 export {normalizeVirtualPath} from './utils/virtual-path';
+
+export {seqRowControl} from './seq';

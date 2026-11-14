@@ -5,6 +5,8 @@
  * v4.1: 简化为 path-based 统一接口，放弃 IInodeStore/IMetaStore/IContentStore 三层分离。
  */
 
+import {ordinaryRecordField,SEQ_ROW_SCHEMA_FIELD} from '../utils/seq-row-metadata';
+import {compareUtf8} from '../utils/key-order';
 import type {
     IStorageBackend,
     FSNode,
@@ -21,7 +23,7 @@ import type {
     RecordQueryResult,
     RecordWalkOptions,
 } from '../protocol';
-import { DEVICE_HANDLER_METADATA_KEY } from '../protocol';
+import { DEVICE_HANDLER_METADATA_KEY, FSError } from '../protocol';
 
 interface Entry {
     type: 'file' | 'directory';
@@ -122,6 +124,7 @@ export class MemoryBackend implements IStorageBackend {
             }
         }
         this.data.delete(p);
+        this.records.removePaths(p);
     }
 
     async rename(fromPath: string, toPath: string): Promise<void> {
@@ -130,6 +133,7 @@ export class MemoryBackend implements IStorageBackend {
         const entry = this.data.get(from);
         if (!entry) return;
         const fromPrefix = from === '/' ? '/' : from + '/';
+        this.records.movePaths(from,to);
 
         this.data.delete(from);
         this.data.set(to, { ...entry, modifiedAt: Date.now() });
@@ -234,13 +238,29 @@ export class MemoryBackend implements IStorageBackend {
 }
 
 class MemoryRecordStore implements IRecordStore, IRecordTransaction {
+    readonly structuredRows = true;
+    readonly pathsInTransaction = true;
+    readonly keyPages = true;
     private fields = new Map<string, Map<string, RecordValue>>();
     private tail: Promise<void> = Promise.resolve();
 
     clear(): void { this.fields.clear(); }
+    removePaths(path: string): void {
+        for (const key of this.fields.keys()) if (key === path || key.startsWith(path + '/')) this.fields.delete(key);
+    }
+    movePaths(from: string, to: string): void {
+        for (const [path,value] of [...this.fields]) if (path === from || path.startsWith(from + '/')) {
+            this.fields.delete(path); this.fields.set(to + path.slice(from.length),value);
+        }
+    }
 
     async getRecordField(path: string, field: string): Promise<RecordValue | undefined> {
         return structuredClone(this.fields.get(path)?.get(field));
+    }
+    async getRecordKeys(path: string, options: import('../protocol').RecordKeysOptions): Promise<string[]> {
+        return [...(this.fields.get(path)?.keys() ?? [])].filter(key => key.startsWith(options.prefix ?? '')
+            && (options.after === undefined || compareUtf8(key,options.after) > 0))
+            .sort(compareUtf8).slice(0,options.limit);
     }
 
     async getRecordFields(path: string, fields: string[]): Promise<Record<string, RecordValue>> {
@@ -257,6 +277,9 @@ class MemoryRecordStore implements IRecordStore, IRecordTransaction {
     }
 
     async setRecordField(path: string, field: string, value: RecordValue): Promise<void> {
+        ordinaryRecordField(field);
+        if (this.fields.get(path)?.has(SEQ_ROW_SCHEMA_FIELD))
+            (await import('./memory-seq-rows')).validateMemoryRowWrite(this.fields,path,field,value);
         const row = this.fields.get(path) ?? new Map<string, RecordValue>();
         row.set(field, structuredClone(value));
         this.fields.set(path, row);
@@ -267,10 +290,18 @@ class MemoryRecordStore implements IRecordStore, IRecordTransaction {
     }
 
     async setAllRecordFields(path: string, fields: Record<string, RecordValue>): Promise<void> {
+        Object.keys(fields).forEach(ordinaryRecordField);
         this.fields.set(path, new Map(Object.entries(structuredClone(fields))));
     }
 
     async clearRecordFields(path: string): Promise<void> { this.fields.delete(path); }
+    async rowControl(path: string, command: import('../protocol').SeqRowCommand, input?: unknown): Promise<unknown> {
+        if (command === 'seq.rows.describe.v1' && !this.fields.get(path)?.has(SEQ_ROW_SCHEMA_FIELD)) {
+            if (input !== undefined) throw new FSError('EINVAL','Schema inspection accepts no input','seq.rows');
+            return null;
+        }
+        return (await import('./memory-seq-rows')).memoryRowControl(this.fields,path,command,input);
+    }
     async createRecordIndex(): Promise<void> {}
     async deleteRecordIndex(): Promise<void> {}
 
