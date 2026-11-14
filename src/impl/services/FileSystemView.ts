@@ -33,13 +33,8 @@ type Binding = FileSystemMount & { root: string };
 type Method = (...args: any[]) => any;
 type Methods = Record<string, Method>;
 
-/** Strict POSIX virtual path. No implicit host paths, URL decoding, or parent traversal. */
-export function normalizeVirtualPath(path: string): string {
-    if (!path.startsWith('/') || /[\\\0]/.test(path) || path.split('/').includes('..')) {
-        throw new FSError('EINVAL', 'Expected an absolute virtual path without parent traversal', 'resolve');
-    }
-    return P.normalize(path);
-}
+import {normalizeVirtualPath} from '../../utils/virtual-path';
+export {normalizeVirtualPath} from '../../utils/virtual-path';
 
 /** Independent mount namespace. Disposing a view never disposes its shared sources. */
 export class FileSystemView implements IFileSystem {
