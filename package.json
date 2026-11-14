@@ -16,6 +16,16 @@
       "types": "./src/testing/index.ts",
       "import": "./src/testing/index.ts",
       "default": "./src/testing/index.ts"
+    },
+    "./protocol": {
+      "types": "./src/protocol.ts",
+      "import": "./src/protocol.ts",
+      "default": "./src/protocol.ts"
+    },
+    "./path": {
+      "types": "./src/utils/virtual-path.ts",
+      "import": "./src/utils/virtual-path.ts",
+      "default": "./src/utils/virtual-path.ts"
     }
   },
   "publishConfig": {
@@ -42,6 +52,26 @@
         "require": {
           "types": "./dist/testing/index.d.cts",
           "default": "./dist/testing/index.cjs"
+        }
+      },
+      "./protocol": {
+        "import": {
+          "types": "./dist/protocol.d.ts",
+          "default": "./dist/protocol.js"
+        },
+        "require": {
+          "types": "./dist/protocol.d.cts",
+          "default": "./dist/protocol.cjs"
+        }
+      },
+      "./path": {
+        "import": {
+          "types": "./dist/path.d.ts",
+          "default": "./dist/path.js"
+        },
+        "require": {
+          "types": "./dist/path.d.cts",
+          "default": "./dist/path.cjs"
         }
       }
     }

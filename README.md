@@ -18,7 +18,7 @@ await fs.driver.createFile({ parentPath: '/', name: 'hello.txt', content: 'Hello
 await manager.dispose();
 ```
 
-The workspace uses source exports; `pnpm pack` replaces them with the ESM/CJS and declaration exports in `publishConfig`. Testing helpers have a separate `@nestos/vfs-core/testing` entry. Drivers implement storage contracts; host applications inject project policy. Optional sync integration must live outside this repository.
+The workspace uses source exports; `pnpm pack` replaces them with the ESM/CJS and declaration exports in `publishConfig`. Testing helpers have a separate `@nestos/vfs-core/testing` entry. `@nestos/vfs-core/protocol` exposes contracts and errors without engine assembly; `@nestos/vfs-core/path` exposes strict virtual path normalization without loading filesystem views. All entries share the same error classes. Drivers implement storage contracts; host applications inject project policy. Optional sync integration must live outside this repository.
 
 See [development instructions](AGENTS.md), [key classes](doc/key-classes.md) and [entry point](src/index.ts).
 
