@@ -217,8 +217,9 @@ export class FileSystemView implements IFileSystem {
             if (error instanceof FSOperationCancelledError) throw error;
             if (error instanceof FSError) {
                 const wrapped = new FSError(error.code, `Source operation failed: ${method}`, method, undefined, error);
-                const receipt = error as FSError & { operationId?: string; outcome?: string };
+                const receipt = error as FSError & { operationId?: string; outcome?: string; remoteCode?: string };
                 if (receipt.operationId) Object.assign(wrapped, { operationId: receipt.operationId, outcome: receipt.outcome });
+                if (receipt.remoteCode && /^[A-Z][A-Z0-9_]{0,79}$/.test(receipt.remoteCode)) Object.assign(wrapped, {remoteCode:receipt.remoteCode});
                 throw wrapped;
             }
             throw new FSError('EIO', `Source operation failed: ${method}`, method, undefined,
